@@ -6,21 +6,33 @@ require 'uri'
 require 'mysql2'
 require 'mysql2-cs-bind'
 
+# Isuconditionというモジュール
 module Isucondition
+  # SinatraのWebアプリケーションのBaseクラスを継承
   class App < Sinatra::Base
+    
+    # 開発環境での設定を追加
     configure :development do
       require 'sinatra/reloader'
       register Sinatra::Reloader
     end
 
+    # セッションDIが格納されるCookieの名前？
     SESSION_NAME = 'isucondition_ruby'
+
+    # コンディションの上限数
     CONDITION_LIMIT = 20
+
+    # 静的ファイルの置き場所
     FRONTEND_CONTENTS_PATH = '../public'
+
     JIA_JWT_SIGNING_KEY_PATH = '../ec256-public.pem'
-    DEFAULT_ICON_FILE_PATH = '../NoImage.jpg'
     DEFAULT_JIA_SERVICE_URL = 'http://localhost:5000'
 
+    DEFAULT_ICON_FILE_PATH = '../NoImage.jpg'
+
     MYSQL_ERR_NUM_DUPLICATE_ENTRY = 1062
+
     CONDITION_LEVEL_INFO = 'info'
     CONDITION_LEVEL_WARNING = 'warning'
     CONDITION_LEVEL_CRITICAL = 'critical'
@@ -36,8 +48,11 @@ module Isucondition
     set :protection, false  # IPアドレスでHTTPS接続した場合に一部機能が動かなくなるため無効化
 
     POST_ISU_CONDITION_TARGET_BASE_URL = ENV.fetch('POST_ISUCONDITION_TARGET_BASE_URL')
+
+    # JWTの署名検証用の公開鍵
     JIA_JWT_SIGNING_KEY = OpenSSL::PKey::EC.new(File.read(JIA_JWT_SIGNING_KEY_PATH), '')
 
+    # MySQLへの接続情報を管理するクラス
     class MySQLConnectionEnv
       def initialize
         @host = get_env('MYSQL_HOST', '127.0.0.1')
@@ -64,6 +79,8 @@ module Isucondition
 
       private
 
+      # 環境変数から値を取得し、返すprivateメソッド
+      # 値が設定されていなければデフォルト値を返す
       def get_env(key, default)
         val = ENV.fetch(key, '')
         return val unless val.empty?
@@ -73,13 +90,17 @@ module Isucondition
 
     helpers do
       def json_params
+        # TODO rewindについて調べる
+        # TODO symbolize_namesについて調べる
         @json_params ||= JSON.parse(request.body.tap(&:rewind).read, symbolize_names: true)
       end
 
+      # ローカルスレッドにDBクライアントがあればそれを返し、なければ新しいDBクライアントを返す
       def db
         Thread.current[:db] ||= MySQLConnectionEnv.new.connect_db
       end
 
+      # 引数で渡した処理をトランザクションを発行して実行する
       def db_transaction(&block)
         db.query('BEGIN')
         done = false
@@ -96,7 +117,8 @@ module Isucondition
         halt(*args)
       end
 
-
+      # セッションからjia_user_idを取得し、返す
+      # jia_user_idがなかったり、対応するユーザがDBに存在しない場合はnilを返す
       def user_id_from_session
         jia_user_id = session[:jia_user_id]
         return nil if !jia_user_id || jia_user_id.empty?
@@ -106,6 +128,8 @@ module Isucondition
         jia_user_id
       end
 
+      # jia_service_urlという設定情報がDBに存在する場合は、DBに登録されているURLを返す
+      # DBに存在しない場合は、デフォルトのURLを返す
       def jia_service_url
         config = db.xquery('SELECT * FROM `isu_association_config` WHERE `name` = ?', 'jia_service_url').first
         return DEFAULT_JIA_SERVICE_URL unless config
@@ -117,6 +141,7 @@ module Isucondition
         idx = -1
         warn_count = 0
         while idx
+          # TODO indexの処理を調べる
           idx = condition.index('=true', idx+1)
           warn_count += 1 if idx
         end
@@ -134,8 +159,9 @@ module Isucondition
       end
 
       # ISUのコンディションの文字列がcsv形式になっているか検証
+      # TODO 処理の内容を確認
       def valid_condition_format?(condition_str)
-        keys = %w(is_dirty= is_overweight= is_broken=)
+        keys = %w[is_dirty= is_overweight= is_broken=]
         value_true = 'true'
         value_false = 'false'
 
@@ -662,13 +688,13 @@ module Isucondition
       ''
     end
 
-    %w(
+    %w[
       /
       /register
       /isu/:jia_isu_uuid
       /isu/:jia_isu_uuid/condition
       /isu/:jia_isu_uuid/graph
-    ).each do |_|
+    ].each do |_|
       get _ do
         content_type :html
         File.read(File.join(FRONTEND_CONTENTS_PATH, 'index.html'))
