@@ -141,11 +141,12 @@ module Isucondition
         idx = -1
         warn_count = 0
         while idx
-          # TODO indexの処理を調べる
+          # String.index(探索する文字列, 探索を開始するインデックス)
           idx = condition.index('=true', idx+1)
           warn_count += 1 if idx
         end
 
+        # 3つのコンディションレベルのうちtrueになっているものの数からコンディションレベルを判定
         case warn_count
         when 0
           CONDITION_LEVEL_INFO
@@ -159,7 +160,7 @@ module Isucondition
       end
 
       # ISUのコンディションの文字列がcsv形式になっているか検証
-      # TODO 処理の内容を確認
+      # booleanを返す
       def valid_condition_format?(condition_str)
         keys = %w[is_dirty= is_overweight= is_broken=]
         value_true = 'true'
@@ -190,6 +191,7 @@ module Isucondition
 
     # サービスを初期化
     post '/initialize' do
+      # リクエストボディにjia_service_urlが含まれていなければ400エラー
       jia_service_url = begin
         json_params[:jia_service_url]
       rescue JSON::ParserError
@@ -197,7 +199,10 @@ module Isucondition
       end
       halt_error 400, 'bad request body' unless jia_service_url
 
+      # DBの初期化
       system('../sql/init.sh', out: :err, exception: true)
+
+      # jia_service_urlをDBに登録
       db.xquery(
         'INSERT INTO `isu_association_config` (`name`, `url`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `url` = VALUES(`url`)',
         'jia_service_url',
@@ -210,6 +215,8 @@ module Isucondition
 
     # サインアップ・サインイン
     post '/api/auth' do
+      # リクエストのBearerトークンからJWTを取り出す
+      # &.はSafe Navigation Operator。 nilじゃなければメソッドを呼び出す
       req_jwt = request.env['HTTP_AUTHORIZATION']&.delete_prefix('Bearer ')
       token, _headers = begin
         JWT.decode(req_jwt, JIA_JWT_SIGNING_KEY, true, algorithm: 'ES256')
